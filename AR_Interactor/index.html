@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>The Thirst Variable - AR Interactor</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background: #0b0f19; font-family: -apple-system, sans-serif; color: #fff;
+        }
+        /* Setup / Preset Screen */
+        #setup-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0b0f19; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 20; padding: 20px; box-sizing: border-box;
+        }
+        .setup-card {
+            background: #161b22; border: 1px solid #30363d; padding: 25px;
+            border-radius: 12px; max-width: 380px; width: 100%; text-align: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .setup-title { color: #58a6ff; font-size: 18px; margin-bottom: 5px; font-weight: bold; }
+        .setup-subtitle { color: #8b949e; font-size: 12px; margin-bottom: 20px; }
+        .audio-slot {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #0b0f19; border: 1px solid #30363d; padding: 8px 12px;
+            border-radius: 6px; margin-bottom: 10px; font-size: 12px;
+        }
+        .start-btn {
+            background: #238636; color: #fff; border: none; padding: 12px;
+            width: 100%; border-radius: 6px; font-weight: bold; font-size: 14px;
+            cursor: pointer; margin-top: 15px; transition: background 0.2s;
+        }
+        .start-btn:hover { background: #2ea043; }
+
+        /* AR & UI View */
+        #video-background {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: -1; display: none;
+        }
+        #canvas-container { width: 100%; height: 100%; display: none; position: absolute; top: 0; left: 0; }
+        
+        #control-panel {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: rgba(11, 15, 25, 0.85); backdrop-filter: blur(10px);
+            border-top: 1px solid #30363d; padding: 15px; box-sizing: border-box;
+            display: none; flex-direction: column; align-items: center; z-index: 10;
+        }
+        .control-title { font-size: 12px; color: #58a6ff; margin-bottom: 6px; font-weight: bold; text-align: center; }
+        .buttons-grid { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 6px; }
+        .spawn-btn {
+            background: #21262d; border: 1px solid #30363d; color: #fff;
+            padding: 8px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;
+        }
+        .spawn-btn:active { background: #30363d; }
+        #status-bar { font-size: 10px; color: #8b949e; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <!-- Setup / Preset Screen -->
+    <div id="setup-screen">
+        <div class="setup-card">
+            <div class="setup-title">AR Interactor Preset</div>
+            <div class="setup-subtitle">Load your 5 color audio samples before performance</div>
+            
+            <div class="audio-slot"><span>💧 Drop (Cyan)</span><input type="file" accept="audio/*" style="font-size:10px; width:150px;"></div>
+            <div class="audio-slot"><span>⚪ Circle (Yellow)</span><input type="file" accept="audio/*" style="font-size:10px; width:150px;"></div>
+            <div class="audio-slot"><span>🔺 Triangle (Magenta)</span><input type="file" accept="audio/*" style="font-size:10px; width:150px;"></div>
+            <div class="audio-slot"><span>⬛ Square (Green)</span><input type="file" accept="audio/*" style="font-size:10px; width:150px;"></div>
+            <div class="audio-slot"><span>🔵 Extra (Blue)</span><input type="file" accept="audio/*" style="font-size:10px; width:150px;"></div>
+
+            <button class="start-btn" onclick="startPerformance()">START PERFORMANCE</button>
+        </div>
+    </div>
+
+    <!-- Camera Feed -->
+    <video id="video-background" autoplay playsinline muted></video>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Control & Spawn Panel -->
+    <div id="control-panel">
+        <div class="control-title">Spawn Objects (Max 10) | Radius: 2.5m<br><span style="font-size:10px; color:#8b949e;">Tap object to cycle filters (Drop ➔ Circle ➔ Triangle ➔ Square)</span></div>
+        <div class="buttons-grid">
+            <button class="spawn-btn" style="border-color: #00f0ff;" onclick="spawnObject('Cyan', 0x00f0ff)">+ Cyan</button>
+            <button class="spawn-btn" style="border-color: #f0ff00;" onclick="spawnObject('Yellow', 0xf0ff00)">+ Yellow</button>
+            <button class="spawn-btn" style="border-color: #0055ff;" onclick="spawnObject('Blue', 0x0055ff)">+ Blue</button>
+            <button class="spawn-btn" style="border-color: #ff00aa;" onclick="spawnObject('Magenta', 0xff00aa)">+ Magenta</button>
+            <button class="spawn-btn" style="border-color: #00aa55;" onclick="spawnObject('Green', 0x00aa55)">+ Green</button>
+        </div>
+        <div id="status-bar">Active Objects: 0 / 10 | Loops: 0</div>
+    </div>
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        const maxObjects = 10;
+        const radiusLimit = 2.5; // 2.5 meters radius
+        const activeObjects = [];
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // Touch handling variables for Swipe Up / Swipe Down gestures
+        let touchStartY = 0;
+        let touchedObject = null;
+
+        function startPerformance() {
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('video-background').style.display = 'block';
+            document.getElementById('canvas-container').style.display = 'block';
+            document.getElementById('control-panel').style.display = 'flex';
+
+            // Init Camera
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => { document.getElementById('video-background').srcObject = stream; })
+                .catch(err => { console.error("Camera access denied:", err); });
+
+            initThreeJS();
+        }
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1));
+
+            // Animation Loop
+            function animate() {
+                requestAnimationFrame(animate);
+                activeObjects.forEach(obj => {
+                    obj.rotation.x += 0.01;
+                    obj.rotation.y += 0.015;
+                });
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        // Spawn Object with initial Drop filter (40% opacity)
+        window.spawnObject = function(colorName, colorHex) {
+            if (activeObjects.length >= maxObjects) {
+                removeOldestUnlockedObject();
+            }
+
+            // Default shape: Drop (Sphere)
+            const geometry = new THREE.SphereGeometry(0.4, 16, 16);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: colorHex, 
+                wireframe: true,
+                transparent: true,
+                opacity: 0.4 // Initial 40% opacity as requested
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+
+            // Random position inside 2.5m radius bubble
+            const u = Math.random();
+            const v = Math.random();
+            const theta = u * 2.0 * Math.PI;
+            const phi = Math.acos(2.0 * v - 1.0);
+            const r = Math.cbrt(Math.random()) * radiusLimit;
+
+            mesh.position.set(
+                r * Math.sin(phi) * Math.cos(theta),
+                (Math.random() - 0.5) * 1.2, 
+                -1.5 - (r * Math.cos(phi))
+            );
+
+            mesh.userData = {
+                colorHex: colorHex,
+                filterState: 0, // 0: Drop, 1: Circle, 2: Triangle, 3: Square
+                createdAt: Date.now(),
+                maxLife: 30000, // 30s idle life
+                isLooping: false // Protected loop state
+            };
+
+            scene.add(mesh);
+            activeObjects.push(mesh);
+            updateStatus();
+        };
+
+        function removeOldestUnlockedObject() {
+            const index = activeObjects.findIndex(obj => !obj.userData.isLooping);
+            if (index !== -1) {
+                const obj = activeObjects.splice(index, 1)[0];
+                scene.remove(obj);
+                obj.geometry.dispose();
+                obj.material.dispose();
+            } else if (activeObjects.length > 0) {
+                const obj = activeObjects.shift();
+                scene.remove(obj);
+                obj.geometry.dispose();
+                obj.material.dispose();
+            }
+        }
+
+        // Tap/Click to cycle through the 4 filters
+        window.addEventListener('click', (event) => {
+            // Ignore clicks on control panel
+            if (event.clientY > window.innerHeight - 150) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(activeObjects);
+
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                
+                // Cycle Filter State (0 -> 1 -> 2 -> 3 -> 0)
+                obj.userData.filterState = (obj.userData.filterState + 1) % 4;
+                
+                // Update Geometry based on Filter State
+                obj.geometry.dispose();
+
+                if (obj.userData.filterState === 0) {
+                    obj.geometry = new THREE.SphereGeometry(0.4, 16, 16); // Drop (Clean Sound)
+                } else if (obj.userData.filterState === 1) {
+                    obj.geometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 16); // Circle (Echo / Delay)
+                } else if (obj.userData.filterState === 2) {
+                    obj.geometry = new THREE.ConeGeometry(0.4, 0.7, 4); // Triangle (Room Acoustics / Reverb)
+                } else if (obj.userData.filterState === 3) {
+                    obj.geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5); // Square (EQ Filter)
+                }
+
+                updateStatus();
+            }
+        });
+
+        // Touch Gestures for Swipe Up (Loop) & Swipe Down (Delete / Slide Down)
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                touchStartY = e.touches[0].clientY;
+                const clientX = e.touches[0].clientX;
+                
+                mouse.x = (clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(touchStartY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(activeObjects);
+                if (intersects.length > 0) {
+                    touchedObject = intersects[0].object;
+                } else {
+                    touchedObject = null;
+                }
+            }
+        });
+
+        window.addEventListener('touchend', (e) => {
+            if (!touchedObject) return;
+            const touchEndY = e.changedTouches[0].clientY;
+            const diffY = touchStartY - touchEndY; // Positive = Swipe Up, Negative = Swipe Down
+
+            if (diffY > 40) {
+                // Swipe Up: Enable Loop (Stable, protected from auto-removal)
+                touchedObject.userData.isLooping = true;
+                touchedObject.material.wireframe = false;
+                touchedObject.material.opacity = 0.9;
+            } else if (diffY < -40) {
+                // Swipe Down: Slide Down / Remove object immediately
+                scene.remove(touchedObject);
+                const idx = activeObjects.indexOf(touchedObject);
+                if (idx > -1) activeObjects.splice(idx, 1);
+                touchedObject.geometry.dispose();
+                touchedObject.material.dispose();
+            }
+            touchedObject = null;
+            updateStatus();
+        });
+
+        // Ecosystem Loop: Remove idle un-looping objects after 30s
+        setInterval(() => {
+            const now = Date.now();
+            let changed = false;
+
+            for (let i = activeObjects.length - 1; i >= 0; i--) {
+                const obj = activeObjects[i];
+                if (!obj.userData.isLooping && (now - obj.userData.createdAt > obj.userData.maxLife)) {
+                    scene.remove(obj);
+                    obj.geometry.dispose();
+                    obj.material.dispose();
+                    activeObjects.splice(i, 1);
+                    changed = true;
+                }
+            }
+            if (changed) updateStatus();
+        }, 1000);
+
+        function updateStatus() {
+            const loopCount = activeObjects.filter(o => o.userData.isLooping).length;
+            document.getElementById('status-bar').innerText = `Active: ${activeObjects.length} / ${maxObjects} | Loops: ${loopCount}`;
+        }
+
+        window.addEventListener('resize', () => {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+    </script>
+</body>
+</html>

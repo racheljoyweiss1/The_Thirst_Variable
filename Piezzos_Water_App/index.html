@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Laptop Ensemble - Live Dashboard</title>
+    <style>
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #58a6ff;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 20px;
+        }
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            background-color: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .tab-btn.active {
+            background-color: #1f6feb;
+            border-color: #1f6feb;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .master-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        select, button {
+            background-color: #21262d;
+            color: white;
+            border: 1px solid #30363d;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button.action-btn {
+            background-color: #238636;
+            font-weight: bold;
+        }
+        button.action-btn:hover {
+            background-color: #2ea043;
+        }
+        button.stop-btn {
+            background-color: #da3633;
+            font-weight: bold;
+        }
+        button.stop-btn:hover {
+            background-color: #b62324;
+        }
+        button.capture-btn {
+            background-color: #9e6a03;
+            font-weight: bold;
+        }
+        button.capture-btn:hover {
+            background-color: #bb8009;
+        }
+        .channels-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+        .channel-strip {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .channel-strip h3 {
+            margin: 0 0 5px 0;
+            text-align: center;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        label {
+            font-size: 11px;
+            color: #8b949e;
+        }
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+        .vu-meter-container {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            height: 10px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        .vu-meter-fill {
+            height: 100%;
+            width: 0%;
+            background: #3fb950;
+            transition: width 0.05s ease;
+        }
+        .sample-status {
+            font-size: 11px;
+            color: #3fb950;
+            text-align: center;
+            min-height: 15px;
+        }
+        .sequencer-grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 5px;
+            margin-top: 15px;
+        }
+        .step-btn {
+            background: #21262d;
+            border: 1px solid #30363d;
+            height: 40px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .step-btn.active {
+            background: #1f6feb;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Water Laptop Ensemble</h1>
+    <div class="subtitle">Live Performance Control Dashboard</div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('channels')">Live Channels & FX</button>
+        <button class="tab-btn" onclick="switchTab('sequencer')">Water Sequencer</button>
+    </div>
+
+    <!-- Master Control Panel -->
+    <div class="master-panel">
+        <div>
+            <label>Audio Input Device:</label><br>
+            <select id="audio-input" style="width: 180px;"></select>
+        </div>
+        <div>
+            <label>Audio Output Device:</label><br>
+            <select id="audio-output" style="width: 180px;"></select>
+        </div>
+        <div>
+            <button class="action-btn" onclick="initAudioEngine()">Start Audio</button>
+            <button class="stop-btn" onclick="stopAudioEngine()">Stop Audio</button>
+        </div>
+        <div>
+            <label>Master Volume</label><br>
+            <input type="range" min="0" max="1.5" step="0.05" value="1" oninput="updateMasterVolume(this.value)">
+        </div>
+        <div>
+            <label for="tempo">Master BPM: <span id="tempo-val">120</span></label><br>
+            <input type="range" id="tempo" min="60" max="180" value="120" oninput="updateTempo(this.value)">
+        </div>
+    </div>
+
+    <div id="tab-channels" class="tab-content active">
+        <div class="channels-container" id="channels-grid"></div>
+    </div>
+
+    <div id="tab-sequencer" class="tab-content">
+        <div class="master-panel" style="justify-content: flex-start; gap: 20px;">
+            <button class="action-btn" id="seq-play-btn" onclick="toggleSequencer()">Play Sequencer</button>
+            <span>Trigger your captured live water samples across 16 steps:</span>
+        </div>
+        <div id="sequencer-rows"></div>
+    </div>
+
+    <script>
+        let audioCtx;
+        let masterGainNode;
+        let limiterNode;
+        let channels = [];
+        let capturedBuffers = [null, null, null, null];
+        let mediaStreamSource = null;
+        let activeStream = null;
+        let isSequencerPlaying = false;
+        let currentStep = 0;
+        let seqInterval;
+
+        const channelColors = ['#58a6ff', '#3fb950', '#d29922', '#f85149'];
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            if (tabName === 'channels') {
+                document.getElementById('tab-channels').classList.add('active');
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+            } else {
+                document.getElementById('tab-sequencer').classList.add('active');
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+            }
+        }
+
+        async function loadDevices() {
+            try {
+                let tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                tempStream.getTracks().forEach(track => track.stop());
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const inputSelect = document.getElementById('audio-input');
+                const outputSelect = document.getElementById('audio-output');
+                
+                inputSelect.innerHTML = '';
+                outputSelect.innerHTML = '';
+
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `${device.kind} - ${device.deviceId.slice(0,5)}...`;
+                    if (device.kind === 'audioinput') {
+                        inputSelect.appendChild(option);
+                    } else if (device.kind === 'audiooutput') {
+                        outputSelect.appendChild(option);
+                    }
+                });
+            } catch (err) {
+                console.log("Device enumeration error:", err);
+            }
+        }
+
+        async function initAudioEngine() {
+            if (audioCtx) return;
+            
+            const selectedInputId = document.getElementById('audio-input').value;
+            const selectedOutputId = document.getElementById('audio-output').value;
+
+            try {
+                const constraints = {
+                    audio: {
+                        deviceId: selectedInputId ? { exact: selectedInputId } : undefined,
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 4
+                    }
+                };
+
+                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+                if (audioCtx.setSinkId && selectedOutputId) {
+                    await audioCtx.setSinkId(selectedOutputId);
+                }
+
+                masterGainNode = audioCtx.createGain();
+                limiterNode = audioCtx.createDynamicsCompressor();
+                limiterNode.threshold.setValueAtTime(-3, audioCtx.currentTime);
+                limiterNode.ratio.setValueAtTime(20, audioCtx.currentTime);
+
+                masterGainNode.connect(limiterNode);
+                limiterNode.connect(audioCtx.destination);
+
+                mediaStreamSource = audioCtx.createMediaStreamSource(activeStream);
+                let splitter = audioCtx.createChannelSplitter(4);
+                mediaStreamSource.connect(splitter);
+
+                const gridContainer = document.getElementById('channels-grid');
+                gridContainer.innerHTML = '';
+                channels = [];
+
+                for (let i = 0; i < 4; i++) {
+                    let chan = {
+                        gain: audioCtx.createGain(),
+                        filter: audioCtx.createBiquadFilter(),
+                        distortion: audioCtx.createWaveShaper(),
+                        analyser: audioCtx.createAnalyser()
+                    };
+
+                    chan.filter.type = 'lowpass';
+                    chan.filter.frequency.value = 5000;
+                    chan.gain.gain.value = 1.0;
+                    chan.distortion.curve = makeDistortionCurve(0);
+                    chan.analyser.fftSize = 256;
+
+                    try {
+                        splitter.connect(chan.gain, i, 0);
+                    } catch(e) {
+                        mediaStreamSource.connect(chan.gain);
+                    }
+
+                    chan.gain.connect(chan.filter);
+                    chan.filter.connect(chan.distortion);
+                    chan.distortion.connect(chan.analyser);
+                    chan.analyser.connect(masterGainNode);
+
+                    channels.push(chan);
+
+                    let strip = document.createElement('div');
+                    strip.className = 'channel-strip';
+                    strip.style.borderTop = `4px solid ${channelColors[i]}`;
+                    strip.innerHTML = `
+                        <h3 style="color: ${channelColors[i]}">Piezo Channel ${i+1}</h3>
+                        <button class="capture-btn" onclick="captureLiveSample(${i})">Capture Live Audio</button>
+                        <div class="sample-status" id="status-${i}">No sample recorded</div>
+                        
+                        <div class="control-group">
+                            <label>Input VU Meter</label>
+                            <div class="vu-meter-container">
+                                <div class="vu-meter-fill" id="vu-${i}"></div>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>Pre-amp Gain</label>
+                            <input type="range" min="0" max="2" step="0.05" value="1" oninput="updateParam(${i}, 'gain', this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>Filter Cutoff (Water Tone)</label>
+                            <input type="range" min="200" max="10000" step="100" value="5000" oninput="updateParam(${i}, 'filter', this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>Water Distortion / Crunch</label>
+                            <input type="range" min="0" max="100" step="1" value="0" oninput="updateParam(${i}, 'distortion', this.value)">
+                        </div>
+                    `;
+                    gridContainer.appendChild(strip);
+                }
+
+                setInterval(updateVUMeters, 50);
+                buildSequencerUI();
+                alert("Audio Engine Started Successfully!");
+
+            } catch (err) {
+                console.error("Error starting audio engine:", err);
+                alert("Could not open audio interface or permissions blocked.");
+            }
+        }
+
+        function stopAudioEngine() {
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
+            if (isSequencerPlaying) toggleSequencer();
+            alert("Audio Engine Stopped.");
+        }
+
+        function updateMasterVolume(val) {
+            if (masterGainNode && audioCtx) {
+                masterGainNode.gain.setValueAtTime(parseFloat(val), audioCtx.currentTime);
+            }
+        }
+
+        function makeDistortionCurve(amount) {
+            let k = typeof amount === 'number' ? amount : 50,
+                n_samples = 44100,
+                curve = new Float32Array(n_samples),
+                deg = Math.PI / 180;
+            for (let i = 0; i < n_samples; ++i) {
+                let x = (i * 2) / n_samples - 1;
+                curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+            }
+            return curve;
+        }
+
+        function updateParam(index, param, value) {
+            if (!audioCtx || !channels[index]) return;
+            if (param === 'gain') {
+                channels[index].gain.gain.setValueAtTime(parseFloat(value), audioCtx.currentTime);
+            } else if (param === 'filter') {
+                channels[index].filter.frequency.setValueAtTime(parseFloat(value), audioCtx.currentTime);
+            } else if (param === 'distortion') {
+                channels[index].distortion.curve = makeDistortionCurve(parseFloat(value));
+            }
+        }
+
+        // Safe buffer-based capture (Zero freezes)
+        function captureLiveSample(index) {
+            if (!audioCtx || !activeStream) {
+                alert("Start audio engine first!");
+                return;
+            }
+
+            let sampleRate = audioCtx.sampleRate;
+            let duration = 0.5; // half second buffer
+            let bufferLen = sampleRate * duration;
+            
+            let recContext = new (window.AudioContext || window.webkitAudioContext)();
+            let source = recContext.createMediaStreamSource(activeStream);
+            let processor = recContext.createScriptProcessor(4096, 1, 1);
+
+            let audioBuffer = audioCtx.createBuffer(1, bufferLen, sampleRate);
+            let channelData = audioBuffer.getChannelData(0);
+            let sampleIndex = 0;
+            let isCaptured = false;
+
+            processor.onaudioprocess = function(e) {
+                if (isCaptured) return;
+                let input = e.inputBuffer.getChannelData(0);
+                for (let i = 0; i < input.length; i++) {
+                    if (sampleIndex < bufferLen) {
+                        channelData[sampleIndex++] = input[i];
+                    } else {
+                        isCaptured = true;
+                        break;
+                    }
+                }
+            };
+
+            source.connect(processor);
+            processor.connect(recContext.destination);
+
+            setTimeout(() => {
+                recContext.close();
+                capturedBuffers[index] = audioBuffer;
+                let statusEl = document.getElementById(`status-${index}`);
+                statusEl.innerText = "✓ Sample Captured!";
+                statusEl.style.color = channelColors[index];
+            }, 600);
+        }
+
+        function playCapturedSample(index) {
+            if (!audioCtx || !capturedBuffers[index]) return;
+            let source = audioCtx.createBufferSource();
+            source.buffer = capturedBuffers[index];
+            source.connect(masterGainNode);
+            source.start();
+        }
+
+        function updateVUMeters() {
+            if (!channels.length) return;
+            for (let i = 0; i < 4; i++) {
+                let data = new Uint8Array(channels[i].analyser.frequencyBinCount);
+                channels[i].analyser.getByteFrequencyData(data);
+                let sum = data.reduce((a, b) => a + b, 0);
+                let avg = sum / data.length;
+                let percentage = Math.min(100, (avg / 128) * 100);
+                let vuFill = document.getElementById(`vu-${i}`);
+                if (vuFill) vuFill.style.width = `${percentage}%`;
+            }
+        }
+
+        let seqMatrix = Array(4).fill().map(() => Array(16).fill(false));
+
+        function buildSequencerUI() {
+            const container = document.getElementById('sequencer-rows');
+            container.innerHTML = '';
+            for (let r = 0; r < 4; r++) {
+                let rowDiv = document.createElement('div');
+                rowDiv.style.display = 'flex';
+                rowDiv.style.alignItems = 'center';
+                rowDiv.style.gap = '5px';
+                rowDiv.style.marginBottom = '5px';
+
+                let label = document.createElement('span');
+                label.innerText = `P${r+1}`;
+                label.style.width = '35px';
+                label.style.fontSize = '12px';
+                label.style.fontWeight = 'bold';
+                label.style.color = channelColors[r];
+                rowDiv.appendChild(label);
+
+                let gridDiv = document.createElement('div');
+                gridDiv.className = 'sequencer-grid';
+                gridDiv.style.flex = '1';
+
+                for (let c = 0; c < 16; c++) {
+                    let btn = document.createElement('button');
+                    btn.className = 'step-btn';
+                    btn.id = `step-${r}-${c}`;
+                    btn.onclick = () => toggleStep(r, c);
+                    gridDiv.appendChild(btn);
+                }
+                rowDiv.appendChild(gridDiv);
+                container.appendChild(rowDiv);
+            }
+        }
+
+        function toggleStep(row, col) {
+            seqMatrix[row][col] = !seqMatrix[row][col];
+            let btn = document.getElementById(`step-${row}-${col}`);
+            if (seqMatrix[row][col]) {
+                btn.style.backgroundColor = channelColors[row];
+            } else {
+                btn.style.backgroundColor = '#21262d';
+            }
+        }
+
+        let currentBPM = 120;
+        function updateTempo(val) {
+            currentBPM = val;
+            document.getElementById('tempo-val').innerText = val;
+            if (isSequencerPlaying) restartSequencerInterval();
+        }
+
+        function toggleSequencer() {
+            if (!audioCtx) {
+                alert("Please start Audio Engine first!");
+                return;
+            }
+            isSequencerPlaying = !isSequencerPlaying;
+            let btn = document.getElementById('seq-play-btn');
+            if (isSequencerPlaying) {
+                btn.innerText = "Stop Sequencer";
+                btn.style.backgroundColor = "#da3633";
+                startSequencerInterval();
+            } else {
+                btn.innerText = "Play Sequencer";
+                btn.style.backgroundColor = "#238636";
+                clearInterval(seqInterval);
+            }
+        }
+
+        function startSequencerInterval() {
+            clearInterval(seqInterval);
+            let intervalTime = (60 / currentBPM / 4) * 1000;
+            seqInterval = setInterval(() => {
+                for (let r = 0; r < 4; r++) {
+                    if (seqMatrix[r][currentStep]) {
+                        playCapturedSample(r);
+                    }
+                    let stepBtn = document.getElementById(`step-${r}-${currentStep}`);
+                    if (stepBtn) {
+                        stepBtn.style.borderColor = '#3fb950';
+                        setTimeout(() => stepBtn.style.borderColor = '#30363d', 100);
+                    }
+                }
+                currentStep = (currentStep + 1) % 16;
+            }, intervalTime);
+        }
+
+        function restartSequencerInterval() {
+            clearInterval(seqInterval);
+            startSequencerInterval();
+        }
+
+        window.onload = loadDevices;
+    </script>
+</body>
+</html>
